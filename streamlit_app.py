@@ -1,151 +1,131 @@
 import streamlit as st
 import pandas as pd
-import math
-from pathlib import Path
+import matplotlib.pyplot as plt
+import seaborn as sns
+from io import StringIO
 
-# Set the title and favicon that appear in the Browser's tab bar.
+# ------------------------------------------------------------
+# Page Config
+# ------------------------------------------------------------
+
 st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
+    page_title="Arctic Voice",
+    page_icon="🐋",
+    layout="wide"
 )
 
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
+# ------------------------------------------------------------
+# Page Title
+# ------------------------------------------------------------
+
+st.title("🌊 Arctic Voice Dashboard")
+st.markdown("### Cetacean Interaction Events in China (2012–2019)")
+st.markdown("---")
+
+# ------------------------------------------------------------
+# Load & Clean Data
+# ------------------------------------------------------------
 
 @st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+def load_data():
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
+    data_text = """
+DATE	FACILITY	SPECIES	EVENT
+8/14/2019	Beijing Aquarium	Bottlenose dolphin	Dolphins used for public interactions
+8/10/2019	Hefei Yaotai Ocean World	Unknown Dolphin	trainer for a day advertised
+7/25/2019	Weihai Shendiaoshen Safari Park	Bottlenose dolphin	Dolphins used for photo opportunities
+7/22/2019	Sanya Haichang Fantasy Town	Beluga whale	TV celebrities allowed to kiss whales
+6/9/2019	Beijing Aquarium	Beluga whale	Children allowed to interact
+3/27/2018	Zhuhai Chimelong Ocean Kingdom	Bottlenose dolphin	Dolphins used for photo opportunities
+3/26/2018	Guangzhou Grandview Aquarium	Beluga whale	Whales used for photo opportunities
+1/29/2018	Nanchang Sunac Ocean Park	Bottlenose dolphin	Close contact feeding interactions
+5/21/2017	Beijing Aquarium	Beluga whale	Public interactions
+4/17/2017	Shenzhen Safari Park	Pantropical spotted dolphin	Swim-with encounters
+3/2/2017	Fuzhou Polar Ocean World	Beluga whale	Public photo sessions
+6/27/2016	Fenjiezhou Island Aquarium	Pacific white-sided dolphin	Swim-with encounters
+4/11/2015	Fushun Royal Ocean World	Beluga whale	Public interactions
+1/15/2015	Dalian Laohutan Ocean Park	Beluga whale	Public interactions
+3/23/2012	Dalian SunAsia Ocean World	Bottlenose dolphin	Public interactions
+"""
 
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
+    df = pd.read_csv(StringIO(data_text), sep="\t")
+    df["DATE"] = pd.to_datetime(df["DATE"])
+    df["YEAR"] = df["DATE"].dt.year
+    df["MONTH"] = df["DATE"].dt.month
 
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
+    return df
 
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
+df = load_data()
 
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
+# ------------------------------------------------------------
+# Sidebar Filters
+# ------------------------------------------------------------
 
-    return gdp_df
+st.sidebar.header("Filter Options")
 
-gdp_df = get_gdp_data()
-
-# -----------------------------------------------------------------------------
-# Draw the actual page
-
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
-
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
-
-# Add some spacing
-''
-''
-
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
-
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
-
-countries = gdp_df['Country Code'].unique()
-
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
+selected_years = st.sidebar.slider(
+    "Select Year Range",
+    int(df["YEAR"].min()),
+    int(df["YEAR"].max()),
+    (int(df["YEAR"].min()), int(df["YEAR"].max()))
 )
 
-''
-''
+selected_species = st.sidebar.multiselect(
+    "Select Species",
+    df["SPECIES"].unique(),
+    default=list(df["SPECIES"].unique())
+)
 
+filtered_df = df[
+    (df["YEAR"] >= selected_years[0]) &
+    (df["YEAR"] <= selected_years[1]) &
+    (df["SPECIES"].isin(selected_species))
+]
 
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
+# ------------------------------------------------------------
+# Summary Metrics
+# ------------------------------------------------------------
 
-st.header(f'GDP in {to_year}', divider='gray')
+st.markdown("## 📊 Summary Statistics")
 
-''
+col1, col2, col3 = st.columns(3)
 
-cols = st.columns(4)
+col1.metric("Total Events", len(filtered_df))
+col2.metric("Unique Facilities", filtered_df["FACILITY"].nunique())
+col3.metric("Species Involved", filtered_df["SPECIES"].nunique())
 
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
+st.markdown("---")
 
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
+# ------------------------------------------------------------
+# Chart 1: Events by Year
+# ------------------------------------------------------------
 
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
+st.subheader("📅 Events by Year")
 
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+year_counts = filtered_df["YEAR"].value_counts().sort_index()
+
+fig1, ax1 = plt.subplots()
+ax1.bar(year_counts.index.astype(str), year_counts.values)
+ax1.set_xlabel("Year")
+ax1.set_ylabel("Number of Events")
+
+st.pyplot(fig1)
+
+# ------------------------------------------------------------
+# Chart 2: Top Facilities
+# ------------------------------------------------------------
+
+st.subheader("🏢 Top Facilities")
+
+facility_counts = filtered_df["FACILITY"].value_counts()
+
+fig2, ax2 = plt.subplots()
+ax2.barh(facility_counts.index, facility_counts.values)
+ax2.set_xlabel("Number of Events")
+ax2.invert_yaxis()
+
+st.pyplot(fig2)
+
+# ------------------------------------------------------------
+# Chart 3: Species Distribution
+# ---------------------
